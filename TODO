@@ -1,3 +1,0 @@
-1. Use Strassen or related algorithms for dense matrix multiplication and inversion when ny is large.
-2. 3D vectorial version.
-3. Other boundary conditions in transverse direction.
