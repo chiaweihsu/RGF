@@ -1,24 +1,44 @@
 function channels = setup_channels(ny, BC, kdx, epsilon_L, epsilon_R)
 %SETUP_CHANNELS    Set up channels of the homogeneous spaces.
-%   Returns a structure containing properties of the propagating and evanescent
-%   channels in the homogeneous spaces on the left and right.
+%   channels = setup_channels(ny, BC, kdx, epsilon_L, epsilon_R) returns a
+%   structure containing properties of the propagating and evanescent channels
+%   in the homogeneous spaces on the left and right.
 %
 %   === Input parameters ===
 %   ny (positive integer scalar):
 %       Number of grid points in the transverse (y) direction.
-%   BC (character vector or string, case insensitive):
-%       Boundary condition in the transverse direction y; can be 'periodic' or
-%       'Dirichlet'. Periodic BC means E_z(n,m+ny)=E_z(n,m). Dirichlet BC means
-%       E_z(n,m=0)=E_z(n,m=ny+1)=0.
+%   BC (character vector or string (case insensitive) or scalar number):
+%       Boundary condition in the y direction.
+%       For character inputs, the options are:
+%         'periodic': f(m+ny) = f(m)
+%         'Dirichlet' or 'PEC': f(0) = f(ny+1) = 0
+%         'Neumann' or 'PMC': f(0) = f(1), f(ny+1) = f(ny)
+%         'DirichletNeumann' or 'PECPMC': f(0) = 0, f(ny+1) = f(ny)
+%         'NeumannDirichlet' or 'PMCPEC': f(0) = f(1), f(ny+1) = 0
+%       When BC is a scalar number, the Bloch periodic boundary
+%       condition is used with f(m+ny) = f(m)*exp(1i*ky*a) where ky
+%       is the Bloch wave number. Here, BC = ky*a = ky*dx*ny.
 %   kdx (numeric scalar, real or complex):
 %       Normalized frequency k*dx.
 %   epsilon_L (numeric scalar, real or complex):
 %       Relative permittivity of the homogeneous space on the left.
-%   epsilon_R (numeric scalar, real or complex):
-%       Relative permittivity of the homogeneous space on the right.
+%   epsilon_R (numeric scalar, real or complex, optional):
+%       Relative permittivity of the homogeneous space on the right. Only the
+%       left side will be considered if epsilon_R is not given or if it is empty
+%       or NaN.
 %
 %   === Returns ===
 %   channels (structure):
+%       channels.kydx (1-by-ny real row vector):
+%           Normalized transverse wave number ky*dx for all ny channels. They
+%           are real-valued and are ordered from small to large.
+%       channels.fun_chi (function_handle):
+%           A function that, given one element of kydx as the input, returns its
+%           normalized transverse field profile as an ny-by-1 column vector.
+%           When the input kydx is a row vector, it returns a matrix where each
+%           column is the respective transverse profile. The transverse modes
+%           form a complete and orthonormal set, so the ny-by-ny matrix
+%           channels.fun_chi(channels.kydx) is unitary.
 %       channels.L and channels.R (structue):
 %           Structures containing properties specific to the left (L) and right
 %           (R) sides.
@@ -28,7 +48,7 @@ function channels = setup_channels(ny, BC, kdx, epsilon_L, epsilon_R)
 %           Normalized longitudinal wave number kx*dx for all channels. Due to
 %           the discretization, kxdx is equivalent to kxdx + 2*pi, so kxdx is
 %           on the folded complex plane (ie, the surface of a cylinder).
-%           Thereare 2*ny unique solutions of kxdx, and whenever kxdx is a
+%           There are 2*ny unique solutions of kxdx, and whenever kxdx is a
 %           solution, -kxdx is also a solution. Here, we choose the ny solutions
 %           such that
 %           1) When kdx is real, we have
@@ -44,86 +64,123 @@ function channels = setup_channels(ny, BC, kdx, epsilon_L, epsilon_R)
 %           group velocity is v_g = (sin(kxdx)/kdx)*(c/epsilon_L).
 %       channels.L.ind_prop (1-by-N_prop integer row vector):
 %           Indices of the N_prop propagating channels among all ny channels.
-%       channels.L.ind_prop_conj (1-by-N_prop integer row vector):
+%       channels.L.ind_prop_conj (1-by-N_prop integer row vector, optional):
 %           A permutation vector that switches one propagating channel with one
-%           having a complex-conjugated transverse profile. For periodic BC,
-%           this flips the sign of the propagation angle. For Dirichlet BC,
-%           there is no permutation. This permutation can be used to ensure
-%           symmetry of the scattering matrix required by Lorentz reciprocity.
-%           For example, if r is the reflection matrix, then r itself is not
-%           necessarily symmetric, but r(channels.L.ind_prop_conj,:) should be.
-%       channels.kydx (1-by-ny real row vector):
-%           Normalized transverse wave number ky*dx for all ny channels. They
-%           are real-valued and are ordered from small to large.
-%       channels.fun_chi (function_handle):
-%           A function that, given one element of kydx as the input, returns its
-%           normalized transverse field profile as an ny-by-1 column vector. The
-%           transverse modes form a complete and orthonormal set, so the
-%           ny-by-ny matrix chi = fun_chi(kydx) is unitary.
-%       channels.ind_conj (1-by-ny integer row vector):
-%           A permutation vector that switches one channel with one having a
-%           complex-conjugated field profile. For periodic BC, this flips the
-%           sign of kydx. For Dirichlet BC, there is no permutation.
+%           having a complex-conjugated transverse profile. If
+%               kydx_prop = channels.kydx(channels.L.ind_prop),
+%           then
+%               channels.fun_chi(kydx_prop(channels.L.ind_prop_conj))
+%           equals
+%               conj(channels.fun_chi(kydx_prop)).
+%           For periodic BC, this flips the sign of ky. For Dirichlet and
+%           Neumann BC, fun_chi is real, so there is no permutation. If r is the
+%           reflection matrix computed using the Fisher-Lee relation,
+%           r(channels.L.ind_prop_conj,:) will be symmetric, following from the
+%           symmetry of the wave operator (ie, Lorentz reciprocity).
+%           For Bloch periodic BC with ka != 0, complex conjugation maps ky to
+%           -ky which only exists for a different Bloch BC with -ka, so such
+%           permutation does not exist, and ind_prop_conj is not given.
 
 % Check input parameters
 if ~(isscalar(ny) && isnumeric(ny) && isreal(ny) && (round(ny)==ny) && ny>0); error('ny must be a positive integer scalar'); end
-if ~((ischar(BC) || isstring(BC)) && isrow(BC)); error('BC must be ''periodic'' or ''Dirichlet'''); end
+if ~((ischar(BC) && isvector(BC)) || ((isstring(BC) || isnumeric(BC)) && isscalar(BC)))
+    error('Boundary condition BC has to be a character vector or string, or numeric scalar (for Bloch periodic BC)');
+end
 if ~(isscalar(kdx) && isnumeric(kdx)); error('kdx must be a numeric scalar'); end
 if ~(isscalar(epsilon_L) && isnumeric(epsilon_L)); error('epsilon_L must be a numeric scalar'); end
-if ~(isscalar(epsilon_R) && isnumeric(epsilon_R)); error('epsilon_R must be a numeric scalar'); end
+if nargin == 4 || isempty(epsilon_R) || isnan(epsilon_R)
+    two_sided = false;
+else
+    if ~(isscalar(epsilon_R) && isnumeric(epsilon_R)); error('epsilon_R must be a numeric scalar'); end
+    two_sided = true;
+end
+
+% these are used only for periodic and Bloch periodic boundary conditions; otherwise they stay empty
+ka = [];
+ind_zero_ky = [];
+
+% handle periodic and Bloch periodic boundary conditions
+if strcmpi(BC, 'Bloch')
+    error('To use Bloch periodic boundary condition, set BC to k*a where k is the Bloch wave number and a is the periodicity');
+elseif isnumeric(BC)
+    ka = BC;
+    BC = 'Bloch';
+    % ka must be real for channels.fun_chi(channels.kydx) to be unitary
+    if ~isreal(ka)
+        error('k*a = %g + 1i*%g is a complex number; has to be real for a complete orthonormal transverse basis.', real(ka), imag(ka));
+    end
+elseif strcmpi(BC, 'periodic')
+    ka = 0;
+    BC = 'Bloch';
+end
+
+% f = [f(1), ..., f(ny)].'; 
+% For periodic and Bloch periodic BC, we order channels.kydx such that it increases monotonically from negative to positive
+% For other BC, ky >= 0, and we order channels.kydx such that it increases monotonically from smallest to largest
 
 % Transverse modes (form a complete basis and are independent of epsilon_L/R)
-if strcmpi(BC, 'Dirichlet')
-    ind_zero_ky = 0; % dummy variable; won't be used
-    channels.ind_conj = 1:ny; % No permutation needed
-    % Order the transverse modes such that ky increases monotonically from smallest to largest
+if strcmpi(BC, 'Bloch')
+    % f(ny+1) = f(1)*exp(1i*ka); f(0) = f(ny)*exp(-1i*ka)
+    % The transverse mode index where kydx = ka/ny
+    if mod(ny,2) == 1
+        ind_zero_ky = round((ny+1)/2);
+    else
+        ind_zero_ky = round(ny/2);
+    end
+    channels.kydx = (ka/ny) + ((1:ny)-ind_zero_ky)*(2*pi/ny);
+    % Normalized transverse mode profile: chi_{m,a} = exp(i*(m-m0)*kydx(a))/sqrt(ny)
+    % y=0 is centered at m=m0, and we let m0=(ny+1)/2 in the middle
+    channels.fun_chi = @(kydx) exp(((1:ny).')*(1i*kydx))/sqrt(ny);
+elseif strcmpi(BC, 'Dirichlet') || strcmpi(BC, 'PEC') % PEC on both sides
+    % f(0) = f(ny+1) = 0
     channels.kydx = (1:ny)*(pi/(ny+1));
     % Normalized transverse mode profile: chi_{m,a} = sin(m*kydx(a))*sqrt(2/(ny+1))
     channels.fun_chi = @(kydx) sin(((1:ny).')*kydx)*sqrt(2/(ny+1)); 
-else % periodic
-    if mod(ny,2) == 1
-        % The transverse mode index where kydx = 0
-        ind_zero_ky = round((ny+1)/2);
-        % Permutation: simply flip the ordering
-        channels.ind_conj = ny:-1:1;
-    else
-        % The transverse mode index where kydx = 0
-        ind_zero_ky = round(ny/2);
-        % Permutation: the last mode has -ky equal to ky due to aliasing so should not be flipped
-        channels.ind_conj = [(ny-1):-1:1, ny];
-    end
-    % Order the transverse modes such that ky increases monotonically from negative to positive
-    channels.kydx = ((1:ny)-ind_zero_ky)*(2*pi/ny);
-    % Normalized transverse mode profile: chi_{m,a} = exp(i*m*kydx(a))/sqrt(ny)
-    channels.fun_chi = @(kydx) exp(((1:ny).')*(1i*kydx))/sqrt(ny);
+elseif strcmpi(BC, 'Neumann') || strcmpi(BC, 'PMC') % PMC on both sides
+    % f(0) = f(1), f(ny+1) = f(ny)
+    channels.kydx = ((1:ny)-1)*(pi/ny);
+    % Normalized transverse mode profile:
+    % When kydx == 0: chi_{m,a} = sqrt(1/ny)
+    % When kydx != 0: chi_{m,a} = cos((m-0.5)*kydx(a))*sqrt(2/ny)
+    % We subtract (~kydx)*(1-sqrt(1/2)) from the cos() which is nonzero only when kydx=0
+    channels.fun_chi = @(kydx) (cos(((0.5:ny).')*kydx)-((~kydx)*(1-sqrt(1/2))))*sqrt(2/ny); 
+elseif strcmpi(BC, 'DirichletNeumann') || strcmpi(BC, 'PECPMC') % PEC on the low side, PMC on the high side
+    % f(0) = 0, f(ny+1) = f(ny)
+    channels.kydx = (0.5:ny)*(pi/(ny+0.5));
+    % Normalized transverse mode profile: chi_{m,a} = sin(m*kydx(a))*sqrt(2/(ny+0.5))
+    channels.fun_chi = @(kydx) sin(((1:ny).')*kydx)*sqrt(2/(ny+0.5)); 
+elseif strcmpi(BC, 'NeumannDirichlet') || strcmpi(BC, 'PMCPEC') % PMC on the low side, PEC on the high side
+    % f(0) = f(1), f(ny+1) = 0
+    channels.kydx = (0.5:ny)*(pi/(ny+0.5));
+    % Normalized transverse mode profile: chi_{m,a} = cos((m-0.5)*kydx(a))*sqrt(2/(ny+0.5))
+    channels.fun_chi = @(kydx) cos(((0.5:ny).')*kydx)*sqrt(2/(ny+0.5)); 
+else
+    error('Boundary condition BC = %s is not an eligible option', BC);
 end
 
 % Longitudinal properties for homogeneous space on the left (kxdx, sqrt_vg, number of propagating channels, etc; depends on epsilon_L/R)
-channels.L = setup_longitudinal(BC, (kdx^2)*epsilon_L, 'left', channels.kydx, ind_zero_ky);
-
-% Check that the permutation vectors are consistent
-if ~isequal(channels.ind_conj(channels.L.ind_prop(channels.L.ind_prop_conj)), channels.L.ind_prop); error('channel ordering incorrect'); end
+channels.L = setup_longitudinal((kdx^2)*epsilon_L, channels.kydx, ka, ind_zero_ky);
 
 % Homogeneous space on the right
-if epsilon_R == epsilon_L
-    channels.R = channels.L;
-else
-    channels.R = setup_longitudinal(BC, (kdx^2)*epsilon_R, 'right', channels.kydx, ind_zero_ky);
-    if ~isequal(channels.ind_conj(channels.R.ind_prop(channels.R.ind_prop_conj)), channels.R.ind_prop); error('channel ordering incorrect'); end
+if two_sided
+    if epsilon_R == epsilon_L
+        channels.R = channels.L;
+    else
+        channels.R = setup_longitudinal((kdx^2)*epsilon_R, channels.kydx, ka, ind_zero_ky);
+    end
+elseif nargin == 5
+    % create channels.R.N_prop as this variable may be accessed even in one-sided systems
+    channels.R.N_prop = NaN;
 end
 
 end
 
 
-function side = setup_longitudinal(BC, kdx2_epsilon, side_str, kydx, ind_zero_ky)
+function side = setup_longitudinal(kdx2_epsilon, kydx, ka, ind_zero_ky)
 % Returns a structure 'side'. See comments at the beginning of this file for more info.
 
 % cos(kxdx) from the disperision relation for homogeneous space in the finite-difference wave equation
 cos_kxdx = 2 - 0.5*kdx2_epsilon - cos(kydx);
-
-%if min(abs(cos_kxdx-1)) < 1e-12 || min(abs(cos_kxdx+1)) < 1e-12
-%    warning('%s channels: exist channel(s) at the cutoff between propagating and evanescent channels', side_str);
-%end
 
 % Indices of the propagating channels
 % When kdx2_epsilon is real, these are indicies of the channels with real-valued kxdx
@@ -158,8 +215,12 @@ end
 side.sqrt_vg = sqrt(sin(side.kxdx(side.ind_prop)));
 
 % Permutation that switches one propagating channel with one having a complex-conjugated transverse profile.
-switch lower(BC)
-    case 'periodic'
+if isempty(ka)
+    % For Dirichlet and Neumann BC, fun_chi is real, so no permutation needed
+    side.ind_prop_conj = 1:side.N_prop;
+else
+    if ka == 0
+        % For periodic boundary condition, complex conjugation switches ky and -ky
         if ismember(ind_zero_ky, side.ind_prop) || (mod(side.N_prop,2)==0)
             % Simply flip the ordering
             side.ind_prop_conj = side.N_prop:-1:1;
@@ -167,11 +228,7 @@ switch lower(BC)
             % The last channel has -ky equal to ky due to aliasing so should not be flipped
             side.ind_prop_conj = [(side.N_prop-1):-1:1, side.N_prop];
         end
-    case 'dirichlet'
-        % No permutation needed
-        side.ind_prop_conj = 1:side.N_prop;
-    otherwise
-        error('boundary condition ''%s'' is not supported', string(BC));
+    end
 end
 
 end

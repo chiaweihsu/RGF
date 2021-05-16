@@ -1,37 +1,34 @@
-function [smatrix, channels] = cal_smatrix_RGF(syst, out, in)
-%CAL_SMATRIX_RGF   Scattering matrix from the recursive Green's function method.
-%   [smatrix, channels] = CAL_SMATRIX_RGF(syst, out, in) returns portions of the
-%   scattering matrix with output and input channels specified by out and in,
-%   for the system specified by syst. The system is Maxwell's equations for 2D
-%   TM modes:
-%       [(d/dx)^2 + (d/dy)^2 + k^2*epsilon(x,y)]*E_z(x,y) = 0,
-%   discretized using center difference on a square grid with grid size dx, with
+function [smatrix, channels] = cal_smatrix_RGF_3D(syst, out, in)
+%CAL_SMATRIX_RGF_3D   Scattering matrix from the recursive Green's function method.
+%   [smatrix, channels] = CAL_SMATRIX_RGF_3D(syst, out, in) returns portions of
+%   the scattering matrix with output and input channels specified by out and
+%   in, for the system specified by syst. The system is the scalar wave equation
+%   in 3D:
+%       [(d/dx)^2 + (d/dy)^2 + (d/dz)^2 + k^2*epsilon(x,y,z)]*psi(x,y,z) = 0,
+%   discretized using center difference on a cubic grid with grid size dx, with
 %   homogeneous spaces on the left and on the right.
 %
 %   === Input parameters ===
 %   syst (structure):
 %       syst.epsilon (real or complex matrix):
-%           Relative permittivity of the scattering region, with size [ny,nx] =
-%           size(syst.epsilon) where ny>=1, nx>=0. Absorption can be included
-%           through a positive imaginary part. Linear gain can be included with
-%           a negative imaginary part.
+%           Relative permittivity of the scattering region, with size [nx,ny,nz]
+%            = size(syst.epsilon). Absorption can be included through a positive
+%           imaginary part. Linear gain can be included with a negative
+%           imaginary part.
 %       syst.epsilon_L (numeric scalar, real or complex):
 %           Relative permittivity of the homogeneous space on the left.
 %       syst.epsilon_R (numeric scalar, real or complex):
 %           Relative permittivity of the homogeneous space on the right.
 %       syst.kdx (numeric scalar, real or complex):
 %           Normalized frequency k*dx; can be real or complex.
-%       syst.BC (character vector or string (case insensitive) or scalar number):
-%           Boundary condition in the y direction.
+%       syst.BC (character vector or string (case insensitive) or real vector):
+%           Boundary condition in the x and y directions.
 %           For character inputs, the options are:
-%             'periodic': E_z(m+ny,n) = E_z(m,n)
-%             'Dirichlet' or 'PEC': E_z(0,n) = E_z(ny+1,n) = 0
-%             'Neumann' or 'PMC': E_z(0,n) = E_z(1,n), E_z(ny+1,n) = E_z(ny,n)
-%             'DirichletNeumann' or 'PECPMC': E_z(0,n) = 0, E_z(ny+1,n) = E_z(ny,n)
-%             'NeumannDirichlet' or 'PMCPEC': E_z(0,n) = E_z(1,n), E_z(ny+1,n) = 0
-%           When syst.BC is a scalar number, the Bloch periodic boundary
-%           condition is used with E_z(m+ny,n) = E_z(m,n)*exp(1i*ky*a) where ky
-%           is the Bloch wave number. Here, syst.BC = ky*a = ky*dx*ny.
+%             'periodic': f(n+nx,m) = f(n,m+ny) = f(n,m)
+%             'Dirichlet' or 'PEC': f(0,m) = f(nx+1,m) = f(n,0) = f(n,ny+1) = 0
+%           When BC is a real vector, the Bloch periodic boundary condition is used
+%           with f(n+nx,m) = f(n,m)*exp(1i*kxa), f(n,m+ny) = f(n,m)*exp(1i*kya).
+%           Here, BC = [kxa, kya]
 %   out (cell array or structure or character vector):
 %       The output channels of interest. Possible choices:
 %       A cell array of character vectors: this cell array may contain 'left'
@@ -60,18 +57,19 @@ function [smatrix, channels] = cal_smatrix_RGF(syst, out, in)
 %       'in' is a structure, the channel indicies are those given by in.ind_in_L,
 %       etc.
 %       == Channels ==
-%       Propagating channel a on the left has wavenumbers in x and y being
-%       channels.L.kxdx(ind) and channels.kydx(ind) and transverse profile being
-%       channels.fun_chi(channels.kydx(ind)), where ind=channels.L.ind_prop(a).
+%       Propagating channel a on the left has wave vector [channels.kxdx(ind),
+%       channels.kydx(ind), channels.L.kzdx(ind)] and transverse profile
+%       channels.fun_chi(channels.kxdx(ind), channels.kydx(ind)), where
+%       ind=channels.L.ind_prop(a).
 %       == Reference planes ==
 %       The reference planes for the scattering matrix elements are at one pixel
 %       outside the scattering region, at n=0 and n=nx+1.
 %   channels (structure):
-%       A structure returned by function setup_channels(). It contains
+%       A structure returned by function setup_channels_3D(). It contains
 %       properties of channels of the homogeneous spaces on the left and right.
-%       Type "help setup_channels" for more information.
+%       Type "help setup_channels_3D" for more information.
 %
-%   See also: setup_channels 
+%   See also: setup_channels_3D
 
 %% Check validity of the input arguments
 
@@ -82,23 +80,23 @@ if ~isfield(syst, 'epsilon_L'); error('syst.epsilon_L must be provided'); end
 if ~isfield(syst, 'epsilon_R'); error('syst.epsilon_R must be provided'); end
 if ~isfield(syst, 'kdx');       error('syst.kdx must be provided'); end
 if ~isfield(syst, 'BC');        error('syst.BC must be provided'); end
-if ~(ismatrix(syst.epsilon) && isnumeric(syst.epsilon));     error('syst.epsilon must be a numeric matrix'); end
+if ~((ndims(syst.epsilon)==3 || ndims(syst.epsilon)==2) && isnumeric(syst.epsilon)); error('syst.epsilon must be a 3D array'); end
 if ~(isscalar(syst.epsilon_L) && isnumeric(syst.epsilon_L)); error('syst.epsilon_L must be a numeric scalar'); end
 if ~(isscalar(syst.epsilon_R) && isnumeric(syst.epsilon_R)); error('syst.epsilon_R must be a numeric scalar'); end
 if ~(isscalar(syst.kdx) && isnumeric(syst.kdx));             error('syst.kdx must be a numeric scalar'); end
-if ~((ischar(syst.BC) || isstring(syst.BC)) && isrow(syst.BC)); error('syst.BC must be ''periodic'' or ''Dirichlet'''); end
 
-% Number of grid points in y and x
-[ny, nx] = size(syst.epsilon);
-if ny==0; error('need at least one site along the transverse (y) direction'); end
+% Number of grid points
+[nx, ny, nz] = size(syst.epsilon);
+nxy = nx*ny;
+if nxy==0; error('need at least one site along the transverse directions (x,y)'); end
 
 %% Build input matrix B and output matrix C (some computations, but not much)
 
 % Set up the homogeneous-space channels on the two sides
-channels = setup_channels(ny, syst.BC, syst.kdx, syst.epsilon_L, syst.epsilon_R);
+channels = setup_channels_3D(nx, ny, syst.BC, syst.kdx, syst.epsilon_L, syst.epsilon_R);
 N_prop_L = channels.L.N_prop; N_prop_R = channels.R.N_prop;
 
-%fprintf('nx = %d; ny = %d; N_prop = %d, %d\n', nx, ny, N_prop_L, N_prop_R);
+%fprintf('nx = %d; ny = %d; nz = %d; N_prop = %d, %d\n', nx, ny, nz, N_prop_L, N_prop_R);
 
 % Input channels, in row vectors
 ind_in_L = zeros(1, 0);
@@ -183,8 +181,11 @@ if (N_in_tot==0 || N_out_tot==0)
     return
 end
 
-% Build ny-by-ny unitary matrix chi where the a-th column is the a-th transverse mode
-chi = channels.fun_chi(channels.kydx);
+% Build nxy-by-nxy unitary matrix chi where the a-th column is the a-th transverse mode reshaped into a column vector
+chi = zeros(nxy, nxy);
+for a = 1:nxy
+    chi(:,a) = reshape(channels.fun_chi(channels.kxdx(a), channels.kydx(a)), [], 1);
+end
 
 % Build input matrix B and output matrix C; the 2i prefactor will be multiplied at the end
 % B and C at one pixel outside the scattering region (n=0 and n=nx+1), as dense matrices
@@ -195,18 +196,32 @@ C_L = spdiags(reshape(channels.L.sqrt_vg(ind_out_L),[],1), 0, N_out_L, N_out_L)*
 C_R = spdiags(reshape(channels.R.sqrt_vg(ind_out_R),[],1), 0, N_out_R, N_out_R)*(chi(:,channels.R.ind_prop(ind_out_R))');
 
 % Retarded Green's function G0 of a semi-infinite homogeneous space, evaluated at the surface (just before the space is terminated)
-G0_L = chi*spdiags(-exp(1i*channels.L.kxdx(:)), 0, ny, ny)*(chi');
+G0_L = chi*spdiags(-exp(1i*channels.L.kzdx(:)), 0, nxy, nxy)*(chi');
 if syst.epsilon_R == syst.epsilon_L
     G0_R = G0_L;
 else
-    G0_R = chi*spdiags(-exp(1i*channels.R.kxdx(:)), 0, ny, ny)*(chi');
+    G0_R = chi*spdiags(-exp(1i*channels.R.kzdx(:)), 0, nxy, nxy)*(chi');
 end
 
 clear chi
 
+% Bloch periodic BC
+if isnumeric(syst.BC)
+    xBC = syst.BC(1);
+    yBC = syst.BC(2);
+else
+    xBC = syst.BC;
+    yBC = syst.BC;
+end
+
+% second derivatives in x and y directions
+[laplacian_x] = build_laplacian_1d(nx, xBC);
+[laplacian_y] = build_laplacian_1d(ny, yBC);
+
 % Finite-difference wave operator for one slice, without the (kdx)^2*epsilon term
-% subtracts 2 for the laplacian in x direction
-A0 = build_laplacian_1d(ny, syst.BC) - 2*speye(ny);
+% use Kronecker outer product to go from 1D to 2D
+% subtracts 2 for the laplacian in z direction
+A0 = kron(speye(ny), laplacian_x) + kron(laplacian_y, speye(nx)) - 2*speye(nxy);
 
 kdx2 = (syst.kdx)^2;
 
@@ -217,41 +232,41 @@ kdx2 = (syst.kdx)^2;
 if N_in_R==0 && N_out_R==0
     % input and output both on the left; loop from right to left
     G_LL = G0_R;
-    for n = nx:-1:1
-        A_nn = A0 + spdiags(kdx2*(syst.epsilon(:,n)), 0, ny, ny);
+    for n = nz:-1:1
+        A_nn = A0 + spdiags(kdx2*reshape(syst.epsilon(:,:,n),[],1), 0, nxy, nxy);
         G_LL = inv(A_nn - G_LL);
     end
-    G_LL = (eye(ny) - G0_L * G_LL) \ G0_L;
+    G_LL = (eye(nxy) - G0_L * G_LL) \ G0_L;
     smatrix = (2i)*(C_L * (G_LL * B_L));
 elseif N_in_R==0
     % input from the left; loop from right to left
     G_LL = G0_R; G_RL = G0_R;
-    for n = nx:-1:1
-        A_nn = A0 + spdiags(kdx2*(syst.epsilon(:,n)), 0, ny, ny);
+    for n = nz:-1:1
+        A_nn = A0 + spdiags(kdx2*reshape(syst.epsilon(:,:,n),[],1), 0, nxy, nxy);
         G_LL = inv(A_nn - G_LL);
         G_RL = - G_RL * G_LL;
     end
-    G_LL = (eye(ny) - G0_L * G_LL) \ G0_L;
+    G_LL = (eye(nxy) - G0_L * G_LL) \ G0_L;
     G_RL = - G_RL * G_LL;
     smatrix = (2i)*[C_L * (G_LL * B_L); C_R * (G_RL * B_L)];
 elseif N_in_L==0 && N_out_L==0
     % input and output both on the right; loop from left to right
     G_RR = G0_L;
-    for n = 1:nx
-        A_nn = A0 + spdiags(kdx2*(syst.epsilon(:,n)), 0, ny, ny);
+    for n = 1:nz
+        A_nn = A0 + spdiags(kdx2*reshape(syst.epsilon(:,:,n),[],1), 0, nxy, nxy);
         G_RR = inv(A_nn - G_RR);
     end
-    G_RR = (eye(ny) - G0_R * G_RR) \ G0_R;
+    G_RR = (eye(nxy) - G0_R * G_RR) \ G0_R;
     smatrix = (2i)*(C_R * (G_RR * B_R));
 elseif N_in_L==0
     % input from the right; loop from left to right
     G_RR = G0_L; G_LR = G0_L;
-    for n = 1:nx
-        A_nn = A0 + spdiags(kdx2*(syst.epsilon(:,n)), 0, ny, ny);
+    for n = 1:nz
+        A_nn = A0 + spdiags(kdx2*reshape(syst.epsilon(:,:,n),[],1), 0, nxy, nxy);
         G_RR = inv(A_nn - G_RR);
         G_LR = - G_LR * G_RR;
     end
-    G_RR = (eye(ny) - G0_R * G_RR) \ G0_R;
+    G_RR = (eye(nxy) - G0_R * G_RR) \ G0_R;
     G_LR = - G_LR * G_RR;
     smatrix = (2i)*[C_L * (G_LR * B_R); C_R * (G_RR * B_R)];
 else
@@ -260,8 +275,8 @@ else
     G_RR = G0_L; G_RL = G0_L; G_LL = G0_L; G_LR = G0_L;
 
     % Main loop of RGF: attach the scattering region slice by slice
-    for n = 1:nx
-        A_nn = A0 + spdiags(kdx2*(syst.epsilon(:,n)), 0, ny, ny);
+    for n = 1:nz
+        A_nn = A0 + spdiags(kdx2*reshape(syst.epsilon(:,:,n),[],1), 0, nxy, nxy);
         G_RR = inv(A_nn - G_RR);
         G_RL = - G_RR * G_RL;
         G_LL =   G_LL - G_LR * G_RL;
@@ -269,7 +284,7 @@ else
     end
 
     % Final step: attach homogeneous space on the right
-    G_RR = (eye(ny) - G0_R * G_RR) \ G0_R;
+    G_RR = (eye(nxy) - G0_R * G_RR) \ G0_R;
     G_RL = - G_RR * G_RL;
     G_LL =   G_LL - G_LR * G_RL;
     G_LR = - G_LR * G_RR;
