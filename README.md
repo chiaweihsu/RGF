@@ -5,5 +5,5 @@ RGF solves the discretized wave equation with no additional approximation. The s
 
 Detailed usage and explanation are given in the first contiguous comment lines, also shown with command "help cal_smatrix_RGF" or "help cal_smatrix_RGF_3D" in MATLAB. For basic usage, see example_script.m and example_script_3D.m.
 
-You can cite this software as:
+You can cite this software as:  
 C. W. Hsu, RGF, https://github.com/chiaweihsu/RGF
