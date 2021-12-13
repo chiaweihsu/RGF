@@ -5,5 +5,7 @@ RGF solves the discretized wave equation with no additional approximation. The s
 
 Detailed usage and explanation are given in the first contiguous comment lines, also shown with command <code>help cal_smatrix_RGF</code> or <code>help cal_smatrix_RGF_3D</code> in MATLAB. For basic usage, see `example_script.m` and `example_script_3D.m`.
 
-You can cite this software as:  
+[Michael Wimmer's PhD thesis](https://epub.uni-regensburg.de/12142/) is a good reference on the recursive Green's function method.
+
+You can cite this software as:
 C. W. Hsu, RGF, https://github.com/chiaweihsu/RGF
