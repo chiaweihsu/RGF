@@ -50,8 +50,8 @@ function channels = setup_channels_3D(nx, ny, BC, kdx, epsilon_L, epsilon_R)
 %           solution, -kzdx is also a solution. Here, we choose the nx*ny solutions
 %           such that
 %           1) When kdx is real, we have
-%               Propagating channels: 0 <= Re(kzdx) <= pi, Im(kzdx) = 0.
-%               Evanescent channels: Im(kzdx) > 0, mod(Re(kzdx),pi) = 0.
+%               Propagating channels: 0 < Re(kzdx) < pi, Im(kzdx) = 0.
+%               Evanescent channels: Im(kzdx) >= 0, mod(Re(kzdx),pi) = 0.
 %           2) When kdx is complex, we analytically continue the above choice
 %           onto the complex-frequency plane. Specifically, we pick the kzdx
 %           that is continuously connected to the one with real kdx through a
@@ -146,34 +146,38 @@ end
 function side = setup_longitudinal(kdx2_epsilon, kxdx, kydx)
 % Returns a structure 'side'. See comments at the beginning of this file for more info.
 
-% cos(kzdx) from the disperision relation for homogeneous space in the finite-difference wave equation
-cos_kzdx = 3 - 0.5*kdx2_epsilon - cos(kxdx) - cos(kydx);
+% finite-difference dispersion for homogeneous space: kdx2_epsilon = 4*sin^2(kxdx/2) + 4*sin^2(kydx/2) + 4*sin^2(kzdx/2)
+
+% sin_kzdx_over_two_sq = sin^2(kzdx/2)
+sin_kzdx_over_two_sq = 0.25*kdx2_epsilon - sin(kxdx/2).^2 - sin(kydx/2).^2;
+
+% Normalized longitudinal wave number
+% asin(sqrt(z)) has two branch points (at z=0 and z=1) and with the branch cuts going outward on the real-z axis; we will address the branch choice below
+% Note kzdx is only defined up to modulo 2*pi (ie, kzdx is equivalent to kzdx + 2*pi, kzdx - 2*pi, etc) because sin(kzdx) and exp(1i*kzdx) are both invariant under 2pi shifts.
+side.kzdx = 2*asin(sqrt(sin_kzdx_over_two_sq));
 
 % Indices of the propagating channels
 % When kdx2_epsilon is real, these are indicies of the channels with real-valued kzdx
 % When kdx2_epsilon is complex, these are indicies of the channels we consider "propagating-like"; they have complex kzdx with 0 < real(kzdx) < pi. When kdx2_epsilon is tuned to a real number continuously, this set continuously becomes that at real kdx2_epsilon.
-side.ind_prop = reshape(find(abs(real(cos_kzdx)) <= 1), 1, []);
+side.ind_prop = reshape(find((real(sin_kzdx_over_two_sq) > 0) & (real(sin_kzdx_over_two_sq) < 1)), 1, []);
+
+% Number of propagating channels
 side.N_prop = length(side.ind_prop);
-if side.N_prop==0 && length(cos_kzdx)==1; side.ind_prop = zeros(1,0); end  % a rare possibility, but in this case ind_prop would be zeros(0,0) while it should be zeros(1,0)
+if side.N_prop==0 && length(kydx)==1; side.ind_prop = zeros(1,0); end  % a rare possibility, but in this case ind_prop would be zeros(0,0) while it should be zeros(1,0)
 
-% Normalized longitudinal wave number
-% Note that acos() in MATLAB returns the principal branch of acos(z), which has two branch points (at z=1 and z=-1) and with the branch cuts going outward on the real axis (at |z|>1).
-side.kzdx = acos(cos_kzdx);
-
-% Note kzdx is only defined up to modulo 2*pi (ie, kzdx is equivalent to kzdx + 2*pi, kzdx - 2*pi, etc), because sin(kzdx) and exp(1i*kzdx) are both invariant under 2pi shifts.
-% However, exp(1i*kzdx) and exp(1i*(-kzdx)) are very different. So, the sign choice of kzdx is important.
-% When kdx2_epsilon is real, we want to choose the sign of kzdx such that:
-% 1) 0 <= kzdx <= pi for propagating channels (where kzdx is real)
-% 2) Im(kzdx) > 0 for evanescent channels
-% The principal branch of acos returns the correct sign for the most part, except when cos_kzdx < -1, for which acos() returns the branch with Im(kzdx) < 0, which is not what we want. We need to flip the sign of those (which can only occur if kdx2_epsilon > 4).
+% Here we address the sign choice of kzdx, namely its branch
+% When kdx2_epsilon is real, we choose the sign of kzdx such that:
+% 1) 0 < kzdx < pi for propagating channels (where kzdx is real)
+% 2) Im(kzdx) >= 0 for evanescent channels
+% Using the correct sign is important when we build the retarded Green's function of the semi-infinite homogeneous space.
+% The default branch choice of asin(sqrt(z)) returns the correct sign for the most part, except when z > 1. We need to flip the sign of those (which can only occur if kdx2_epsilon > 4).
 % When kdx2_epsilon is complex-valued, it is not always possible to unambiguously choose the sign that is "physical", because kzdx will be complex-valued, and the sign we "want" for real(kzdx) and the sign we want for imag(kzdx) may be incompatible.
-% What we do with complex kdx2_epsilon is that we choose the sign for the (complex-valued) kzdx such that when kdx2_epsilon is tuned to a real number continuously, the kzdx we choose continuously becomes the "correct" one at real kdx2_epsilon. To do so, we rotate the two branch cuts of acos() by 90 degrees to the upper part of the complex-cos_kzdx plane (ie, the lower part of the complex-kdx2_epsilon plane) so that no branch-crossing occurs when kdx2_epsilon approaches the real axis, and we pick the branch that contains the "correct" sign when kdx2_epsilon is real. This is implemented by flipping the sign of kzdx, for the ones that require flipping.
+% What we do with complex kdx2_epsilon is that we choose the sign for the (complex-valued) kzdx such that when kdx2_epsilon is tuned to a real number continuously by fixing Re(kdx2_epsilon) and varying Im(kdx2_epsilon), the kzdx we choose continuously becomes the "correct" one at real kdx2_epsilon without crossing any branch cut. To do so, we rotate the two branch cuts of asin(sqrt(z)) by 90 degrees to the lower part of the complex-z plane (ie, the lower part of the complex-kdx2_epsilon plane), and we pick the branch with the correct sign when kdx2_epsilon is real. This is implemented by flipping the sign of kzdx for the ones that require flipping.
 % Note that we will get a discontinuity whenever kdx2_epsilon crosses one of those vertical-pointing branch cuts. That is unavoidable.
 % The following few lines implement the "flipping".
 if ~isreal(kdx2_epsilon) || (isreal(kdx2_epsilon) && kdx2_epsilon > 4)
-    % indicies where flipping is necessary to go from the principal branch of acos to the desired branch described above.
-    % Note that when imag(cos_kzdx)=0, flipping is needed for cos_kzdx<-1 but not needed for cos_kzdx>1, as described above.
-    ind_flip = find((real(cos_kzdx)>1 & imag(cos_kzdx)>0) | (real(cos_kzdx)<-1 & imag(cos_kzdx)>=0));
+    % Note that when imag(sin_kzdx_over_two_sq)=0, flipping is needed for sin_kzdx_over_two_sq>1 but not needed for sin_kzdx_over_two_sq<0.
+    ind_flip = find((real(sin_kzdx_over_two_sq)<0 & imag(sin_kzdx_over_two_sq)<0) | (real(sin_kzdx_over_two_sq)>1 & imag(sin_kzdx_over_two_sq)<=0));
     side.kzdx(ind_flip) = -side.kzdx(ind_flip);
 end
 

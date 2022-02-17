@@ -47,8 +47,8 @@ end
 % first derivative of f
 if strcmpi(BC, 'Bloch')
     % f(n+1) = f(1)*exp(1i*ka); f(0) = f(n)*exp(-1i*ka)
-    % grad_1*f = df = [df(1.5), ..., df(n+0.5)].'
-    grad_1 = spdiags([ones(n,1),-ones(n,1),exp(1i*ka)*ones(n,1)], [1,0,1-n], n, n);
+    % grad_1*f = df = [df(0.5), ..., df(n-0.5)].'
+    grad_1 = spdiags([ones(n,1),-ones(n,1),-exp(-1i*ka)*ones(n,1)], [0,-1,n-1], n, n);
 elseif strcmpi(BC, 'Dirichlet') || strcmpi(BC, 'PEC') % PEC on both sides
     % f(0) = f(n+1) = 0
     % grad_1*f = df = [df(0.5), ..., df(n+0.5)].'
