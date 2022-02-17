@@ -233,7 +233,7 @@ elseif N_in_R==0
     end
     G_LL = (eye(ny) - G0_L * G_LL) \ G0_L;
     G_RL = - G_RL * G_LL;
-    smatrix = (2i)*[C_L * (G_LL * B_L); C_R * (G_RL * B_L)];
+    smatrix = (2i)*[(C_L * G_LL) * B_L; C_R * (G_RL * B_L)]; % also works when N_out_L==0
 elseif N_in_L==0 && N_out_L==0
     % input and output both on the right; loop from left to right
     G_RR = G0_L;
@@ -253,7 +253,7 @@ elseif N_in_L==0
     end
     G_RR = (eye(ny) - G0_R * G_RR) \ G0_R;
     G_LR = - G_LR * G_RR;
-    smatrix = (2i)*[C_L * (G_LR * B_R); C_R * (G_RR * B_R)];
+    smatrix = (2i)*[C_L * (G_LR * B_R); (C_R * G_RR) * B_R]; % also works when N_out_R==0
 else
     % general case: input from both sides; loop from left to right
     % Initial step: retarded Green's function for an semi-infinite homogeneous space on the left
