@@ -2,12 +2,12 @@
 
 %% system parameters of this example
 rng default % for reproducibility of random numbers below
-ny = 100; nx = 100;  % number of grid points in x and y
-syst.kdx = 2*pi/10;  % kdx = omega/c*dx where dx is grid size; use 10 grid points per vacuum wavelength here
+ny = 500; nx = 100;  % number of grid points in x and y
+syst.k0dx = 2*pi/20;  % k0dx = (2*pi/lambda)*dx where lambda is vacuum wavelength and dx is grid size; use 20 grid points per vacuum wavelength here
 syst.epsilon_L = 1.0;  % relative permittivity for the homogeneouse space on the left
 syst.epsilon_R = 1.0;  % relative permittivity for the homogeneouse space on the right
 syst.epsilon = 1.0 + 2.0*rand(ny, nx);  % relative permittivity of the scattering region; can be anything and can be complex-valued; use random numbers as an example
-syst.BC = 'periodic';  % boundary condition in y
+syst.yBC = 'periodic';  % boundary condition in y
 
 %% calculate the transmission matrix from left to right
 in = {'left'};
