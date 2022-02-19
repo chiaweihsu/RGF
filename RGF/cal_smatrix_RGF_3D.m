@@ -244,10 +244,10 @@ elseif N_in_R==0
     for n = nz:-1:1
         A_nn = A0 - spdiags(k0dx2*reshape(syst.epsilon(:,:,n),[],1), 0, nxy, nxy);
         G_LL = inv(A_nn - G_LL);
-        G_RL = - G_RL * G_LL;
+        G_RL = G_RL * G_LL;
     end
     G_LL = (eye(nxy) - G0_L * G_LL) \ G0_L;
-    G_RL = - G_RL * G_LL;
+    G_RL = G_RL * G_LL;
     smatrix = (-2i)*[(C_L * G_LL) * B_L; C_R * (G_RL * B_L)]; % also works when N_out_L==0
 elseif N_in_L==0 && N_out_L==0
     % input and output both on the right; loop from left to right
@@ -264,10 +264,10 @@ elseif N_in_L==0
     for n = 1:nz
         A_nn = A0 - spdiags(k0dx2*reshape(syst.epsilon(:,:,n),[],1), 0, nxy, nxy);
         G_RR = inv(A_nn - G_RR);
-        G_LR = - G_LR * G_RR;
+        G_LR = G_LR * G_RR;
     end
     G_RR = (eye(nxy) - G0_R * G_RR) \ G0_R;
-    G_LR = - G_LR * G_RR;
+    G_LR = G_LR * G_RR;
     smatrix = (-2i)*[C_L * (G_LR * B_R); (C_R * G_RR) * B_R]; % also works when N_out_R==0
 else
     % general case: input from both sides; loop from left to right
@@ -278,16 +278,16 @@ else
     for n = 1:nz
         A_nn = A0 - spdiags(k0dx2*reshape(syst.epsilon(:,:,n),[],1), 0, nxy, nxy);
         G_RR = inv(A_nn - G_RR);
-        G_RL = - G_RR * G_RL;
-        G_LL =   G_LL - G_LR * G_RL;
-        G_LR = - G_LR * G_RR;
+        G_RL = G_RR * G_RL;
+        G_LL = G_LL + G_LR * G_RL;
+        G_LR = G_LR * G_RR;
     end
 
     % Final step: attach homogeneous space on the right
     G_RR = (eye(nxy) - G0_R * G_RR) \ G0_R;
-    G_RL = - G_RR * G_RL;
-    G_LL =   G_LL - G_LR * G_RL;
-    G_LR = - G_LR * G_RR;
+    G_RL = G_RR * G_RL;
+    G_LL = G_LL + G_LR * G_RL;
+    G_LR = G_LR * G_RR;
 
     % Fisher-Lee relation for S = [[r;t],[tp,rp]]; the Kronecker delta term will be included later
     % Multiply to the right first, since typically the number of input channels equals or is less than the number of output channels
