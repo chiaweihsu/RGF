@@ -10,5 +10,7 @@ Detailed usage and explanation are given in the first contiguous comment lines, 
 
 The recursive Green's function method works by slicing the system and then looping over the slices recursively to compute the side-to-side Green's function. Then the scattering matrix is obtained through the Fisher–Lee relation. The main computations are inversions and multiplications of *N*-by-*N* dense matrices, where *N*=*W*/*Δx* in 2D and *N*=(*W*/*Δx*)<sup>2</sup> for square cross sections in 3D, *W* is the transverse width, and *Δx* is the discretization grid size. So the computing time scales as 𝑂(*LW*<sup>3</sup>) in 2D and 𝑂(*LW*<sup>6</sup>) in 3D, where *L* is the longitudinal length. The memory usage scales as 𝑂(*LW*+*W*<sup>2</sup>) in 2D and 𝑂(*LW*<sup>2</sup>+*W*<sup>4</sup>) in 3D. [Michael Wimmer's PhD thesis](https://epub.uni-regensburg.de/12142/) is a good reference on the recursive Green's function method.
 
+For 2D simulations, it is recommended to use the <code>mesti2s()</code> function of [MESTI.m](https://github.com/complexphoton/MESTI.m) instead, which considers the same two-sided geometry as here but additionally implements the more powerful augmented partial factorization (APF) method and other features (such as support for transverse-electric polarization, field-profile computation, custom input/output basis, one-sided geometry, and PML).
+
 You can cite this software as:
 C. W. Hsu, RGF, https://github.com/chiaweihsu/RGF
